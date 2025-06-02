@@ -1,0 +1,758 @@
+---
+title: "Copernicus_ERA5"
+---
+
+## Téléchargement des données ERA5-LAND
+
+L'API utilisé par Copernicus est un client Python. Une première option pour télécharger les données ERA5-LAND est de passer par le package `reticulate`, qui permet d'appeler le client Python dans R. Une deuxième option est d'utiliser le package `ecmwfr` spécifique à R pour faire le téléchargement. 
+
+Pour les deux options, nous développons une fonction qui permet de choisir et lancer une requête de téléchargement aux données ERA5-Land daily statistics. Lors du lancement de la fonction, on peut choisir la variable et la période d'intérêt à télécharger. 
+
+```{r}
+
+# Utilisation du client Python pour télécharger les données ERA5-Land
+
+## chargement du package
+library(reticulate)
+
+## chargement du client Python
+reticulate::py_install("cdsapi")
+cdsapi <- import("cdsapi")
+client <- cdsapi$Client()
+
+## création d'une fonction de téléchargement qui permet de lancer une requête de téléchargement aux données ERA5-Land daily statistics (avec personalisation des données)
+download_era5_land <- function(variable,
+                               start_date,
+                               end_date,
+                               area = c(52, -5, 42, 9), ## France approximativement ?
+                               statistic = "daily_mean",
+                               frequency = "6_hourly", 
+                               time_zone = "utc+02:00", ## time zone en France
+                               product_type = "reanalysis", 
+                               dataset = "derived-era5-single-levels-daily-statistics",
+                               output_file = NULL) {
+  
+  # Générer les dates
+  dates <- seq.Date(as.Date(start_date), as.Date(end_date), by = "day")
+  years <- unique(format(dates, "%Y"))
+  months <- unique(format(dates, "%m"))
+  days <- unique(format(dates, "%d"))
+  
+  # Nom de fichier par défaut
+  if (is.null(output_file)) {
+    output_file <- paste0("era5_", variable, "_", start_date, "_to_", end_date, ".nc")
+  }
+  
+  # Construire la requête
+  request <- dict(
+    dataset_short_name = dataset,
+    product_type = product_type,
+    variable = variable,
+    year = years,
+    month = months,
+    day = days,
+    daily_statistic = statistic,
+    time_zone = time_zone,
+    frequency = frequency,
+    area = area,
+    format = "netcdf",
+    target = output_file
+  )
+  
+  # Lancer la requête
+  client$retrieve(dataset, request, output_file)
+  
+  message("Téléchargement terminé : ", output_file)
+                               }
+
+
+## test
+
+download_era5_land(
+  variable = "total_precipitation",
+  start_date = "2024-09-01",
+  end_date = "2024-09-30")
+```
+
+
+
+```{r}
+
+# Téléchargement direct sans passer par le client Python
+
+## chargement des packages
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, terra, maps, here, ncdf4, raster, climate, devtools, 
+               sf, sp, rnaturalearth, Matrix)
+
+## création d'une fonction de téléchargement des données ERA5 via le package ecmwfr
+library(ecmwfr)
+library(lubridate)
+
+download_era5_ecmwfr <- function(variable,
+                                 start_date,
+                                 end_date,
+                                 statistic,
+                                 area = c(52, -5, 42, 9),
+                                 frequency = "6_hourly",
+                                 time_zone = "utc+02:00",
+                                 dataset = "derived-era5-single-levels-daily-statistics",
+                                 product_type = "reanalysis",
+                                 user = "ecmwfr",
+                                 key,
+                                 output_file = NULL,
+                                 output_dir = ".") {
+  
+  # Validation clé API
+  wf_set_key(key = key, user = user)
+  
+  # Extraire dates
+  dates <- seq(ymd(start_date), ymd(end_date), by = "day")
+  years <- unique(format(dates, "%Y"))
+  months <- unique(format(dates, "%m"))
+  days <- unique(format(dates, "%d"))
+  
+  # Nom du fichier de sortie
+  if (is.null(output_file)) {
+    output_file <- paste0("era5_", variable, "_", start_date, "_to_", end_date, "_", statistic, ".nc")
+  }
+  
+  # Créer la requête
+  request <- list(
+    dataset_short_name = dataset,
+    product_type = product_type,
+    variable = variable,
+    year = years,
+    month = months,
+    day = days,
+    daily_statistic = statistic,
+    time_zone = time_zone,
+    frequency = frequency,
+    area = area,
+    format = "netcdf",
+    target = output_file
+  )
+  
+  # Téléchargement
+  file_path <- wf_request(
+    request = request,
+    transfer = TRUE,
+    user = user, 
+    path = output_dir
+  )
+  
+  message("Téléchargement terminé : ", file_path)
+  return(invisible(file_path))
+}
+
+## test
+
+download_era5_ecmwfr(
+  variable = "2m_temperature",
+  start_date = "2023-01-01",
+  end_date = "2023-02-28",
+  statistic = "daily_mean",
+  key = "73737aee-7063-4fb9-9548-2a983ffdbfbe",
+  output_dir = "data/source/"
+)
+
+```
+
+
+```{r}
+
+## fonction de téléchargement pour plusieurs mois en fichiers séparés
+
+download_era5_ecmwfr <- function(variable,
+                                 start_date,
+                                 end_date,
+                                 statistic,
+                                 area = c(52, -5, 42, 9),
+                                 frequency = "6_hourly",
+                                 time_zone = "utc+02:00",
+                                 dataset = "derived-era5-single-levels-daily-statistics",
+                                 product_type = "reanalysis",
+                                 user = "ecmwfr",
+                                 key,
+                                 output_file = NULL,
+                                 output_dir = ".") {
+  
+  library(lubridate)
+  library(dplyr)
+  
+  # Validation clé API
+  wf_set_key(key = key, user = user)
+  
+  # Convertir en date
+  dates <- seq(ymd(start_date), ymd(end_date), by = "day")
+  
+  # Grouper les dates par année-mois
+  date_df <- tibble(date = dates) %>%
+    mutate(year = format(date, "%Y"),
+           month = format(date, "%m"),
+           day = format(date, "%d")) %>%
+    group_by(year, month)
+  
+  downloaded_files <- c()
+  
+  # Boucle sur chaque groupe (mois)
+  for (grp in group_split(date_df)) {
+    year <- unique(grp$year)
+    month <- unique(grp$month)
+    days <- grp$day
+    
+    # Créer un nom de fichier de sortie spécifique au mois
+    if (is.null(output_file)) {
+      output_file_month <- paste0("era5_", variable, "_", year, "-", month, "_", statistic, ".nc")
+    } else {
+      output_file_month <- gsub("\\.nc$", paste0("_", year, "-", month, ".nc"), output_file)
+    }
+    
+    # Créer la requête
+    request <- list(
+      dataset_short_name = dataset,
+      product_type = product_type,
+      variable = variable,
+      year = year,
+      month = month,
+      day = days,
+      daily_statistic = statistic,
+      time_zone = time_zone,
+      frequency = frequency,
+      area = area,
+      format = "netcdf",
+      target = output_file_month
+    )
+    
+    # Téléchargement
+    file_path <- wf_request(
+      request = request,
+      transfer = TRUE,
+      user = user, 
+      path = output_dir
+    )
+    
+    message("Téléchargement terminé : ", file_path)
+    downloaded_files <- c(downloaded_files, file_path)
+  }
+  
+  return(invisible(downloaded_files))
+}
+
+## test
+
+download_era5_ecmwfr(
+  variable = "2m_temperature",
+  start_date = "2023-01-01",
+  end_date = "2023-02-28",
+  statistic = "daily_mean",
+  key = "73737aee-7063-4fb9-9548-2a983ffdbfbe",
+  output_dir = "data/source/"
+)
+
+```
+
+## Nettoyage des données ERA5-LAND
+
+On peut utiliser le package `terra` ou `ncdf4` par exemple pour ouvrir les données dans R. 
+```{r}
+
+## chargement des packages
+library(terra)
+library(ncdf4)
+
+## chargement des données rasters
+rast_temperature <- rast("data/source/era5_2m_temperature_2023-02_daily_mean.nc")
+```
+
+Par la suite, on utilise le package `rnaturalearth` et `sf` pour délimiter les données d'intérêt qui ne concerne que la France. 
+
+```{r}
+
+## chargement du package
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(sf)
+
+## Extraction des frontières françaises dans un objet sf (couche vectorielle)
+france <- ne_countries(scale = "medium", country = "France", returnclass = "sf")
+
+## Transformation pour que le système de projection soit identique aux données téléchargées
+france <- st_transform(france, terra::crs(rast_temperature))
+
+crop_temp <- crop(rast_temperature, vect(france))      
+mask_temp <- mask(crop_temp, vect(france))
+
+## création d'une dataframe avec les données de la France (en Kelvin -> voir si conversion nécessaire)
+df_temp_fr <- as.data.frame(mask_temp, xy = TRUE, na.rm = TRUE)
+```
+
+### Agrégation temporelle
+
+A partir des données ainsi obtenues, on veut créer des indicateurs temporelles de météo (de la température quotidienne moyenne au niveau du mois). Les indicateurs à calculer sont les suivants : 
+
+- Moyenne mensuelle (arithmétique)
+
+- Maximum/minimum du mois 
+
+- Percentiles
+
+- Vague de "chaleur" = une variable binaire qui prend 1 pour les observations où il y a eu au moins une fois 6 jours "chaud" dans le mois
+
+- Warm Spell Index = nombre de jours de la vague de "chaleur"
+
+```{r}
+
+library(dplyr)
+
+## renommer les colonnes de la dataframe température
+new_names <- colnames(df_temp_fr)
+for (i in 0:29){
+  old_name <- paste0("t2m_valid_time=", i)
+  new_name <- as.character(i + 1)
+  
+  if (old_name %in% new_names){
+    new_names[new_names == old_name] <- new_name
+  }
+}
+colnames(df_temp_fr) <- new_names
+
+## indicateurs de base : moyenne, minimum, maximum
+df_temp_fr <- 
+  df_temp_fr |>
+  mutate(moyenne_temp = rowMeans(df_temp_fr[,3:32], na.rm = TRUE),
+         min_temp = apply(df_temp_fr[,3:32], 1, min, na.rm = TRUE),
+         max_temp = apply(df_temp_fr[,3:32], 1, max, na.rm = TRUE))
+  
+## percentiles du mois : 0.1 - 0.25 - 0.75 - 0.9 - 0.95
+percentiles <- t(apply(df_temp_fr[, 3:32], 1, quantile, probs = c(0.1, 0.25, 0.75, 0.9, 0.95), na.rm = TRUE))
+colnames(percentiles) <- c("p10", "p25", "p75", "p90", "p95")
+
+df_temp_fr <- cbind(df_temp_fr, percentiles)
+
+```
+
+Pour calculer le Warm Spell Index, on a besoin des données de température maximale quotidienne sur la période en question. On fusionne les deux base de données pour calculer l'indice. 
+
+```{r}
+
+## chargement des données raster de température maximale et création d'un dataframe avec les températures maximales
+rast_temp_max <- rast("era5_2m_temperature_2024-09-01_to_2024-09-30_daily_maximum.nc")
+
+crop_temp_max <- crop(rast_temp_max, vect(france))      
+mask_temp_max <- mask(crop_temp_max, vect(france))
+
+df_temp_max <- as.data.frame(mask_temp_max, xy = TRUE, na.rm = TRUE)
+
+## on renomme les colonnes de la même manière que précédemment
+new_names <- colnames(df_temp_max)
+for (i in 0:29){
+  old_name <- paste0("t2m_valid_time=", i)
+  new_name <- paste0(as.character(i + 1)," (maximum)")
+  
+  if (old_name %in% new_names){
+    new_names[new_names == old_name] <- new_name
+  }
+}
+colnames(df_temp_max) <- new_names
+
+## on fusionne les deux bases de données
+df_temp_fr <- cbind(df_temp_fr[,1:2], df_temp_max[,3:32], df_temp_fr[3:40])
+
+rast_temperature
+```
+
+
+On définit un jour de "chaleur" par le fait que la température maximale du jour a été supérieure à la température du 90ème percentile, calculée sur les températures moyennes quotidiennes sur le mois. 
+On définit une vague de "chaleur", si on identifie dans le mois une séquence consécutive d'au moins 6 jours de "chaleur" définis ci-dessus. Cette variable correspond à la variable `warm_spell` qui prend la valeur 1 si, pour un pixel donné, une vague de chaleur est survenue dans le mois.  
+On définit enfin le "Warm Spell Index", qui compte le nombre de jours dans le mois qui appartiennent aux vagues de "chaleur" identifiées ci-dessus. Il correspond à la variable `warm_spell_index`, une variable quantitative discrète.
+
+```{r}
+
+library(zoo)
+
+## création de la variable warm spell = binaire qui vaut 1 si vague de chaleur id
+
+### création d'un vecteur de la longueur du nombre de pixels pour le stockage des résultats
+warm_spell <- numeric(nrow(df_temp_fr))
+### application de la fonction à toutes les lignes du dataframe
+warm_spell <- sapply(seq_len(nrow(df_temp_fr)), function(pixel) {
+  temp_jour_max <- as.numeric(df_temp_fr[pixel, 3:32]) ### température maximale du jour
+  seuil_90 <- df_temp_fr$p90[pixel] ### seuil du 90e percentile pour cette ligne
+  jour_chaud <- temp_jour_max > seuil_90 ### vecteur booléen = TRUE si la température maximale > 90ème percentile
+  count_6_jours_chauds <- rollapply(jour_chaud, width = 6, FUN = function(x) all(x), fill = FALSE, align = "left") ### fonction rollapply permettant d'id les séquences de 6 jours de chaleur (= 1 si TRUE)
+  as.integer(any(count_6_jours_chauds))
+})
+df_temp_fr$warm_spell <- warm_spell
+
+## création de la variable warm spell index qui compte le nombre de jours appartenant aux vagues de chaleur
+
+warm_spell_index <- sapply(seq_len(nrow(df_temp_fr)), function(pixel) {
+  temp_jour_max <- as.numeric(df_temp_fr[pixel, 3:32]) 
+  seuil_90 <- df_temp_fr$p90[pixel] 
+  jour_chaud <- temp_jour_max > seuil_90 
+  count_6_jours_chauds <- rollapply(jour_chaud, width = 6, FUN = function(x) all(x), fill = FALSE, align = "left") 
+  ### initialisation du vecteur qui va stocker le nombre de jours appartenant aux vagues de chaleur
+  count_vague_chaud <- rep(FALSE, length(temp_jour_max)) 
+  for (i in which(count_6_jours_chauds)) { ### position de début de chaque séquence de chaleur 
+  count_vague_chaud[i:(i+5)] <- TRUE ### associe TRUE au jour appartenant aux vagues de chaleur
+}
+  sum(count_vague_chaud) ### somme des TRUE
+})
+
+## ajouter les deux variables au dataframe
+df_temp_fr$warm_spell_index <- warm_spell_index
+
+```
+
+On peut maintenant faire la même chose pour créer le Cold Spell Index ie. une variable comptant le nombre de jours appartenant à des vagues de froid, définies par l'existence d'au moins 6 jours consécutifs où la température maximale des jours a été en-dessous du 10ème percentile de la distribution, calculée sur les températures moyennes quotidiennes sur le mois. 
+
+```{r}
+
+library(zoo)
+
+## création de la variable cold spell = binaire qui vaut 1 si vague de chaleur id
+
+### création d'un vecteur de la longueur du nombre de pixels pour le stockage des résultats
+cold_spell <- numeric(nrow(df_temp_fr))
+### application de la fonction à toutes les lignes du dataframe
+cold_spell <- sapply(seq_len(nrow(df_temp_fr)), function(pixel) {
+  temp_jour_max <- as.numeric(df_temp_fr[pixel, 3:32]) ### température maximale du jour
+  seuil_10 <- df_temp_fr$p10[pixel] ### seuil du 10e percentile pour cette ligne
+  jour_froid <- temp_jour_max < seuil_10 ### vecteur booléen = TRUE si la température maximale > 90ème percentile
+  count_6_jours_froids <- rollapply(jour_froid, width = 6, FUN = function(x) all(x), fill = FALSE, align = "left") ### fonction rollapply permettant d'id les séquences de 6 jours de chaleur (= 1 si TRUE)
+  as.integer(any(count_6_jours_froids))
+})
+df_temp_fr$cold_spell <- cold_spell
+
+## création de la variable warm spell index qui compte le nombre de jours appartenant aux vagues de chaleur
+
+cold_spell_index <- sapply(seq_len(nrow(df_temp_fr)), function(pixel) {
+  temp_jour_max <- as.numeric(df_temp_fr[pixel, 3:32]) 
+  seuil_10 <- df_temp_fr$p10[pixel] 
+  jour_froid <- temp_jour_max < seuil_10 
+  count_6_jours_froids <- rollapply(jour_froid, width = 6, FUN = function(x) all(x), fill = FALSE, align = "left") 
+  ### initialisation du vecteur qui va stocker le nombre de jours appartenant aux vagues de chaleur
+  count_vague_froid <- rep(FALSE, length(temp_jour_max)) 
+  for (i in which(count_6_jours_froids)) { ### position de début de chaque séquence de chaleur 
+  count_vague_froid[i:(i+5)] <- TRUE ### associe TRUE au jour appartenant aux vagues de chaleur
+}
+  sum(count_vague_froid) ### somme des TRUE
+})
+
+## ajouter les deux variables au dataframe
+df_temp_fr$cold_spell_index <- cold_spell_index
+
+```
+
+### Agrégation spatiale
+
+Maintenant que l'on a créé nos indicateurs d'intérêt, nous pouvons réaliser l'agrégation spatiale par commune à l'aide d'un masque spatiale. 
+Pour cela, nous utilisons la méthode d’agrégation spatiale par produit matriciel décrite dans le Handbook de l’analyse des données climatiques agricoles (chapitre 46 de Ortiz-Bobea).
+
+Ici, la résolution des mailles est supérieure à l'unité d'agrégation (commune). On veut donc qu'une maille soit comptée plusieurs fois (dans chaque commune où elle apparaît), pour arriver à la matrice d'agrégation finale. 
+
+Pour cela, on commence par repasser en format raster à partir de la dataframe où les indicateurs temporels ont été créés.
+
+```{r}
+
+library(terra)
+
+## création d'un vecteur spatial à partir de la dataframe
+
+spat <- vect(df_temp_fr, geom = c("x", "y"), crs = crs(rast_temperature))
+
+## création d'un raster vide dans lequel on va interpoler les variables d'intérêt du vecteur spatial
+rast_template <- rast(spat, resolution = 0.25) ## selon la documentation ERA5
+
+rast_temp_fr <- rasterize(spat, rast_template, field = c("moyenne_temp", "min_temp", "max_temp", "warm_spell", "warm_spell_index", "cold_spell", "cold_spell_index"))
+
+```
+
+```{r}
+
+library(sf)
+library(Matrix)
+library(dplyr)
+
+
+
+## chargement du shapefile des communes
+communes <- st_read("communes-20220101.shp")
+
+## vérification que les deux fichiers ont le même CRS
+communes <- st_transform(communes, crs(rast_temp_fr))
+
+## simplification des contours des communes 
+## communes_simplify <- st_simplify(communes, dTolerance = 300)
+
+communes$centre <- st_centroid(communes$geometry)
+
+vect_centroid <- vect(communes$centre)
+
+centroid_test <- extract(rast_temp_fr, vect_centroid)
+
+## rajout de la colonne des communes
+centroid_test$nom_commune <- communes$nom
+
+## vérifier que les NA correspondent aux communes qui se trouvent à la frontière avec un centroide à l'extérieur du pixel
+
+library(FNN)
+
+# Coordonnées des centroïdes avec valeurs valides
+coords_valid <- st_coordinates(communes$centre)[!is.na(centroid_test[, 2]), ]
+values_valid <- centroid_test[!is.na(centroid_test[, 2]), 2]
+
+# Coordonnées des centroïdes NA
+coords_na <- st_coordinates(communes$centre)[is.na(centroid_test[, 2]), ]
+
+# Trouver le plus proche voisin
+nn <- get.knnx(coords_valid, coords_na, k = 1)
+
+# Interpoler : affecter la valeur du plus proche voisin
+centroid_test[is.na(centroid_test[, 2]), 2] <- values_valid[nn$nn.index]
+
+
+## à faire pour toutes les colonnes -> fonction apply
+interpolate_column <- function(col) {
+  is_na <- is.na(col)
+  is_valid <- !is_na
+  
+  if (sum(is_valid) == 0 || sum(is_na) == 0) {
+    return(col)  # Rien à interpoler
+  }
+  
+  coords_valid <- coords_all[is_valid, ]
+  coords_na <- coords_all[is_na, ]
+  values_valid <- col[is_valid]
+  
+  nn <- get.knnx(coords_valid, coords_na, k = 1)
+  
+  col[is_na] <- values_valid[nn$nn.index]
+  return(col)
+}
+
+# Appliquer la fonction à chaque colonne (exclure éventuellement les colonnes non numériques)
+centroid_test_interp <- as.data.frame(lapply(centroid_test, interpolate_column))
+```
+
+
+
+Soit P la matrice de projection/transformation de dimension n*N où n correspond aux communes (échelle d'agrégation) et N au nombre de pixels. 
+
+Lors de l'agrégation, on veut que chaque pixel contribue également à sa commune. Donc pour chaque commune, on normalise les poids pour que leur somme fasse 1.
+
+Soit G la matrice contenant les valeurs climatiques correspondant à la transposée du dataframe `df_temp_fr`. C'est une matrice N*T où N correspond au nombre de pixels et T correspond au nombre d'indicateurs pris en compte.
+
+```{r}
+
+# option 1 : le plus précis, mais qui prend longtemps à exécuter (à cause de la commande st_intersection)
+
+library(sf)
+library(Matrix)
+library(dplyr)
+
+## chargement du shapefile des communes
+communes <- st_read("communes-20220101.shp")
+
+## vérification que les deux fichiers ont le même CRS
+communes <- st_transform(communes, crs(rast_temp_fr))
+
+## création d'un raster où chaque pixel du raster climatique obtient un identifiant
+
+rast_id <- rast_temp_fr[[1]]  
+setValues(rast_id, 1:ncell(rast_id))
+
+ncell(rast_temp_fr)
+ncell(rast_id) ### vérification des dimensions (on travaille avec la taille complète du raster)
+
+## transformation des mailles du raster en polygone rectangulaire correspondant à la superficie de chaque maille
+rast_temp_poly <- as.polygons(rast_id, dissolve = FALSE)
+rast_temp_poly
+## transformation en sf
+rast_temp_sf <- st_as_sf(rast_temp_poly)
+rast_temp_sf
+## colonne d'identification pour chaque pixel
+rast_temp_sf$cell <- 1:nrow(rast_temp_sf)
+
+## intersection entre pixel et commune
+
+# pdf(file = "test.pdf", width = 12, height=14)
+# plot(st_geometry(communes_simplify), col="lightgrey")
+# plot(st_geometry(communes), col="lightgrey", add=T)
+# dev.off()
+
+# library(ggplot2)
+# 
+# ggplot(data = communes_simplify) +
+#   geom_sf(size = 0.5)
+# ggsave(filename = "test.pdf", width=24, height=28)
+  
+intersect <- st_intersection(rast_temp_sf, communes_simplify) ### va créer un objet qui stock chaque portion de pixel et sa correspondance avec une commune  
+intersect$area <- as.numeric(st_area(intersect)) ### va calculer la surface géométrique appartenant à chaque portion de pixel -> utile pour calculer le poids
+
+## création des poids assignés à chaque pixel
+intersect <- intersect |>
+  group_by(cell) |>
+  mutate(poids = area / sum(area)) |>
+  ungroup()
+
+## création d'indices pour ordonner les communes
+intersect$ordre_commune <- as.integer(factor(intersect$insee))
+
+## création de la matrice d'agrégation P
+P <- sparseMatrix(
+  i = intersect$cell,
+  j = intersect$ordre_commune,
+  x = intersect$poids,
+  dims = c(ncell(rast_temp_fr), length(unique(intersect$ordre_commune)))
+)
+
+## extraction de l'ensemble des valeurs du raster de base
+G <- values(rast_temp_fr)
+G[is.na(G)] <- 0  ### remplacer les NA par 0
+
+## produit matriciel
+A <- t(P)%*%G
+
+## format dataframe
+df_temp_agg <- as.data.frame(as.matrix(A))
+
+```
+
+```{r}
+
+## option 2 : utilisation de la command terra::extract, plus rapide 
+
+library(terra)
+library(Matrix)
+
+## chargement du shapefile des communes
+communes <- st_read("communes-20220101.shp")
+
+## vérification que les deux fichiers ont le même CRS
+communes <- st_transform(communes, crs(rast_temp_fr))
+
+## conversion en vecteur spatial
+communes_vect <- vect(communes)
+
+## extraction des poids des fractions de pixel dans les communes
+ext_poids <- extract(rast_temp_fr, communes_vect, weights = TRUE, cells = TRUE)
+
+## renommer les colonnes
+names(ext_poids) <- c("ordre_commune", "moyenne_temp", "min_temp", "max_temp", "warm_spell", "warm_spell_index", "cold_spell", "cold_spell_index", "cell", "poids")
+
+## élimination des NA dans les indices + remplacer les NA dans les valeurs climatiques par 0
+ext_poids <- ext_poids[!is.na(ext_poids$cell), ]
+ext_poids <- ext_poids[!is.na(ext_poids$ordre_commune), ]
+ext_poids[is.na(ext_poids)] <- 0
+
+### problème : les ID dans ordre_commune ne sont pas consécutifs, puisque il y avait des NA => on ne peut pas créer la matrice P directement
+
+## création d'un vecteur d'indices de commune consécutifs
+unique_commune <- sort(unique(ext_poids$ordre_commune))
+
+corresp <- setNames(seq_along(unique_commune), unique_commune)
+
+ext_poids$ordre_commune_new <- corresp[as.character(ext_poids$ordre_commune)]
+
+ext_poids |>
+  group_by(ordre_commune_new) |>
+  summarize(somme_poids = sum(poids, na.rm = TRUE)) |>
+  ungroup() -> poids_check
+
+summary(poids_check$somme_poids)
+
+ext_poids <- ext_poids |>
+  group_by(ordre_commune_new) |>
+  mutate(poids = poids / sum(poids, na.rm = TRUE)) |>
+  ungroup()
+
+## extraction de l'ensemble des valeurs du raster de base
+G <- values(rast_temp_fr)
+G
+G[is.na(G)] <- 0  ### remplacer les NA par 0
+
+### problème : on a enlevé les NA dans les ID des pixels avant, donc non consécutifs
+
+## création d'un vecteur d'indices de pixels consécutifs
+unique_pixel <- sort(unique(ext_poids$cell))
+
+G <- G[unique_pixel, , drop=FALSE]
+
+### il faut matcher chaque pixel de la matrice d'agrégation à sa position dans G
+cell_P <- match(ext_poids$cell, unique_pixel)
+
+## création de la matrice d'agrégation P
+P <- sparseMatrix(
+  i = cell_P,
+  j = ext_poids$ordre_commune_new,
+  x = ext_poids$poids,
+  dims = c(length(unique_pixel), length(unique(ext_poids$ordre_commune_new)))
+)
+
+## vérification des dimensions
+ncell(rast_temp_fr)
+length(unique(ext_poids$ordre_commune_new))
+range(ext_poids$cell)
+range(ext_poids$ordre_commune_new) 
+
+## produit matriciel
+A <- t(P)%*%G
+
+## format dataframe
+df_temp_agg <- as.data.frame(as.matrix(A))
+
+### problème : ne prend en compte que les coordonnées du centre de chaque pixel 
+
+```
+
+```{r}
+
+# option 3 : utiliser exactextractr
+
+library(exactextractr)
+library(terra)
+library(sf)
+library(Matrix)
+
+# convertir raster terra en raster package  pour pouvoir utiliser exact_extract()
+rast_temp_extract <- raster::raster(rast_temp_fr)
+
+## chargement du shapefile des communes
+communes <- st_read("communes-20220101.shp")
+
+## vérification que les deux fichiers ont le même CRS
+communes <- st_transform(communes, crs(rast_temp_fr))
+
+# extrait les valeurs pondérées avec poids de surface exacte
+ext_poids <- exact_extract(rast_temp_extract, communes, include_cell = TRUE, progress = TRUE)
+
+# ext_poids est une liste avec un data.frame par commune avec :
+# coverage_fraction = proportion de la cellule incluse dans la commune
+# cell = numéro de la cellule raster
+
+### transformer la liste en dataframe
+df_ext_poids <- bind_rows(
+  lapply(
+    seq_along(ext_poids), function(i) {
+  df <- ext_poids[[i]]
+  if (nrow(df) > 0) {
+      df$ordre_commune <- i
+      return(df)
+    } else {
+      return(NULL)  ### ignorer les communes sans données
+    }
+  })
+  )
+### problème au niveau des données 
+## création des poids 
+df_ext_poids <- df_ext_poids |>
+  group_by(ordre_commune) |>
+  mutate(poids = coverage_fraction / sum(coverage_fraction)) |>
+  ungroup()
+
+
+```
+
+
