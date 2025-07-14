@@ -27,7 +27,7 @@ download_era5_ecmwfr <- function(variable,
                                  start_date,
                                  end_date,
                                  statistic,
-                                 area = c(52, -5, 42, 9),
+                                 area = c(52, -6, 41, 10),
                                  frequency = "6_hourly",
                                  time_zone = "utc+02:00",
                                  dataset = "derived-era5-single-levels-daily-statistics",
@@ -40,9 +40,13 @@ download_era5_ecmwfr <- function(variable,
   # 1). Set API key
   wf_set_key(key = key, user = user)
   
-  # 2). Download separating by month
+  # 2). Create subdirectory for the variable and statistic
+  variable_dir <- file.path(output_dir, variable, statistic)
+  if (!dir.exists(variable_dir)) {
+    dir.create(variable_dir, recursive = TRUE)
+  }
   
-  # Generate dates
+  # 3). Generate date groups by month
   dates <- seq(ymd(start_date), ymd(end_date), by = "day")
   date_df <- tibble(date = dates) |>
     mutate(year = format(date, "%Y"),
@@ -52,7 +56,7 @@ download_era5_ecmwfr <- function(variable,
   
   downloaded_files <- c()
   
-  # Split month by month
+  # 4). Loop through each group
   for (grp in group_split(date_df)) {
     year <- unique(grp$year)
     month <- unique(grp$month)
@@ -65,7 +69,7 @@ download_era5_ecmwfr <- function(variable,
       output_file_month <- gsub("\\.nc$", paste0("_", year, "-", month, ".nc"), output_file)
     }
     
-    # 3). Construct API request
+    # Construct API request
     request <- list(
       dataset_short_name = dataset,
       product_type = product_type,
@@ -81,12 +85,12 @@ download_era5_ecmwfr <- function(variable,
       target = output_file_month
     )
     
-    # 4). Launch request
+    # Launch request
     file_path <- wf_request(
       request = request,
       transfer = TRUE,
       user = user, 
-      path = output_dir
+      path = variable_dir
     )
     
     downloaded_files <- c(downloaded_files, file_path)
@@ -97,26 +101,95 @@ download_era5_ecmwfr <- function(variable,
 
 #===============================================================================
 
+# Helper function: extract dates from NetCDF file
+extract_dates <- function(nc_file) {
+  # nc_file <- temp_files[1]
+  nc <- nc_open(nc_file)
+  # Extract the time variable
+  time_vals <- ncvar_get(nc, "valid_time")
+  time_units_attr <- ncatt_get(nc, "valid_time", "units")
+  
+  # Extract origin safely
+  if (is.list(time_units_attr)) {
+    time_units <- time_units_attr$value
+  } else {
+    time_units <- time_units_attr
+  }
+  
+  origin <- sub(".*since ", "", time_units)
+  dates <- as.Date(time_vals, origin = origin)
+  nc_close(nc)
+  return(dates)
+}  #Add france layers and cropped (removed it unfortunatey)
+
+#===============================================================================
 
 # Automation of downloaded data processing and border delimitation
 
-process_era5_files <- function(source_dir) {
-
-  # 1). Find all .nc file for a given month and load them
-  nc_files <- list.files(source_dir, pattern = "\\.nc$", full.names = TRUE)
+process_era5_files <- function(source_dir, 
+                               variable, 
+                               statistic,
+                               start_date,
+                               end_date) {
+  # source_dir <- dir$source
+  # variable <- "2m_temperature"
+  # statistic <- "daily_min"
+  # start_date <- ymd("2020-01-01") # Reference period for weather normals
+  # end_date <- ymd("2020-12-31")
   
-  # 2). Crop raster data to France borders
-  france <- ne_countries(scale = "medium", country = "France", returnclass = "sf")
+  # Convert start_date and end_date to Date objects
+  start_date <- ymd(start_date) # Reference period for weather normals
+  end_date <- ymd(end_date)
+  
+  # 1). Find all .nc file for a given month 
+  nc_files <- list.files(source_dir, pattern = "\\.nc$", full.names = TRUE, recursive = T)
+  
+  # Filter files by variable and statistic
+  nc_files <- nc_files[grepl(paste0(variable, ".*", statistic), basename(nc_files))]
+  
+  # Filter files on the reference period
+  nc_files <- nc_files %>%
+    tibble(path = .) %>%
+    mutate(
+      # Extract YYYY-MM from filename
+      date_str = str_extract(path, "\\d{4}-\\d{2}"),
+      date = ymd(paste0(date_str, "-01"))
+    )  %>%
+    filter(date >= start_date & date <= end_date) %>%
+    pull(path)  # Only return the filtered file paths
+  
+  # 2). Open France borders shapefile
+  # Get France borders with sf package
+  france <- rnaturalearth::ne_countries(scale = "medium", country = "France", returnclass = "sf")
+  
+  # Harmonize projection with ncdf files
+  rast_ncdf <- terra::rast(nc_files[1])  # Load the first netCDF file to get the CRS
+  france_proj <- st_transform(france, crs(rast_ncdf))
+  
   
   # 3). Transform into data frame format for each file
   processed_list <- lapply(nc_files, function(nc_file) {
-
+    # nc_file <- nc_files[1]
+    
     # Load netCDF file
-    rast_data <- rast(nc_file)
+    rast_data <- terra::rast(nc_file)  # Load raster
     
-    # Harmonize projection
-    france_proj <- st_transform(france, crs(rast_data))
+    # Crop data using France borders
+    cropped <- crop(rast_data, vect(france_proj))
+    masked <- mask(cropped, vect(france_proj))
     
+    # Get dates in the layers of the raster
+    dates <- extract_dates(nc_file)
+      
+    # Optional: if number of layers in raster doesn't match dates, warn
+    if (nlyr(rast_data) != length(dates)) {
+      warning(paste("Mismatch in file:", nc_file))
+    }
+      
+    # Truncate or repeat dates to match layers, just in case
+    names(rast_data) <- as.character(dates[seq_len(min(length(dates), nlyr(rast_data)))])
+    layer_names <- names(rast_data)
+
     # Crop data using France borders
     cropped <- crop(rast_data, vect(france_proj))
     masked <- mask(cropped, vect(france_proj))
@@ -127,6 +200,13 @@ process_era5_files <- function(source_dir) {
     # Add treated filename
     df$file <- basename(nc_file)
     
+    # Pivot data longer
+    df <- df %>%
+      pivot_longer(cols = -c(x, y, file), 
+                   names_to = "date", 
+                   values_to = paste(variable, statistic, sep = "_")) %>%
+      mutate(date = as.Date(date))  # Convert valid_time to Date type
+    
     return(df)
   })
   
@@ -135,8 +215,137 @@ process_era5_files <- function(source_dir) {
   
 }
 
+
 #===============================================================================
 
+# Creation of climate normals by cells
+# Temperature:
+compute_temperature_normals_dt <- function(df, value_col, rolling_window = 7, percentiles = c(0.01, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99)
+) {
+  
+  # value_col <- paste(variable, statistic, sep = "_")
+  # rolling_window <- 7
+  # df <- df_weather
+  
+  # Convert to data.table in-place
+  setDT(df)
+  
+  df[, `:=`(
+    year = year(date),
+    month = month(date),
+    day = day(date),
+    doy = yday(date)
+  )]
+  
+  # Lookup table for rolling window
+  expand_doy_window <- function(target_doy, window = rolling_window) {
+    ((target_doy + (-window:window) - 1) %% 365) + 1
+  }
+  
+  days_df <- df[, .(month, day, doy)]
+  days_df <- unique(days_df, by = "doy")
+  
+  lookup <- data.table(target_doy = 1:365)[, .(window_doy = expand_doy_window(target_doy)), by = target_doy]
+  lookup <- merge(lookup, days_df[, .(target_doy = doy, target_month = month, target_day = day)], by = "target_doy")
+  lookup <- merge(lookup, days_df[, .(window_doy = doy, window_month = month, window_day = day)], by = "window_doy")
+  
+  # Join in data.table
+  df_long <- merge(
+    df, lookup,
+    by.x = c("month", "day"),
+    by.y = c("window_month", "window_day"),
+    allow.cartesian = TRUE
+  )
+  
+  # Grouped percentiles: blazing fast!
+  rolling <- df_long[
+    ,
+    as.list(quantile(get(value_col), probs = percentiles, na.rm = TRUE, type=1)),
+    by = .(x, y, target_month, target_day)
+  ]
+  
+  # Monthly stats — also data.table
+  monthly <- df[
+    ,
+    .(
+      min = min(get(value_col), na.rm = TRUE),
+      max = max(get(value_col), na.rm = TRUE),
+      mean = mean(get(value_col), na.rm = TRUE),
+      sd = sd(get(value_col), na.rm = TRUE)
+    ),
+    by = .(x, y, month)
+  ]
+  
+  list(
+    monthly = monthly,
+    rolling = rolling
+  )
+}
+
+# Precipitations
+compute_precipitation_normals_dt <- function(df, value_col, rolling_window = 7, percentiles = c(0.01, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99)
+) {
+  
+  # value_col <- paste(variable, statistic, sep = "_")
+  # rolling_window <- 7
+  # df <- df_weather
+  
+  # Convert to data.table in-place
+  setDT(df)
+  
+  df[, `:=`(
+    year = year(date),
+    month = month(date),
+    day = day(date),
+    doy = yday(date)
+  )]
+  
+  # Lookup table for rolling window
+  expand_doy_window <- function(target_doy, window = rolling_window) {
+    ((target_doy + (-window:window) - 1) %% 365) + 1
+  }
+  
+  days_df <- df[, .(month, day, doy)]
+  days_df <- unique(days_df, by = "doy")
+  
+  lookup <- data.table(target_doy = 1:365)[, .(window_doy = expand_doy_window(target_doy)), by = target_doy]
+  lookup <- merge(lookup, days_df[, .(target_doy = doy, target_month = month, target_day = day)], by = "target_doy")
+  lookup <- merge(lookup, days_df[, .(window_doy = doy, window_month = month, window_day = day)], by = "window_doy")
+  
+  # Join in data.table
+  df_long <- merge(
+    df, lookup,
+    by.x = c("month", "day"),
+    by.y = c("window_month", "window_day"),
+    allow.cartesian = TRUE
+  )
+  
+  # Grouped percentiles: blazing fast!
+  rolling <- df_long[
+    ,
+    as.list(quantile(get(value_col), probs = percentiles, na.rm = TRUE, type=1)),
+    by = .(x, y, target_month, target_day)
+  ]
+  
+  # Monthly stats — also data.table
+  monthly <- df[
+    ,
+    .(
+      min = min(get(value_col), na.rm = TRUE),
+      max = max(get(value_col), na.rm = TRUE),
+      mean = mean(get(value_col), na.rm = TRUE),
+      sd = sd(get(value_col), na.rm = TRUE)
+    ),
+    by = .(x, y, month)
+  ]
+  
+  list(
+    monthly = monthly,
+    rolling = rolling
+  )
+}
+
+#===============================================================================
 
 # Creation of basic time indicators : mean, minimum, maximum 
 
