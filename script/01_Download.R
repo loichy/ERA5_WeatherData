@@ -47,14 +47,14 @@ key_loic <- "97b8d178-a8e9-4fa1-ac36-3fae90a074e1"
 params <- tribble(
   ~variable,        ~statistic,
   "2m_temperature", "daily_mean",
-  # "2m_temperature", "daily_minimum",
-  # "2m_temperature", "daily_maximum",
-  # "total_precipitation", "daily_sum"
+  "2m_temperature", "daily_minimum",
+  "2m_temperature", "daily_maximum",
+  "total_precipitation", "daily_sum"
 )
 
 # Define other shared parameters
-start_date <- "2020-01-01"
-end_date <- "2020-01-31"
+start_date <- "1960-01-01"
+end_date <- "2024-01-31"
 output_dir <- dir$source
 
 

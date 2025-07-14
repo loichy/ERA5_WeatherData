@@ -339,7 +339,19 @@ compute_precipitation_normals_dt <- function(df, value_col, rolling_window = 7, 
     by = .(x, y, month)
   ]
   
+  period <- df[
+    ,
+    .(
+      min = min(get(value_col), na.rm = TRUE),
+      max = max(get(value_col), na.rm = TRUE),
+      mean = mean(get(value_col), na.rm = TRUE),
+      sd = sd(get(value_col), na.rm = TRUE)
+    ),
+    by = .(x, y)
+  ]
+  
   list(
+    period = period
     monthly = monthly,
     rolling = rolling
   )
