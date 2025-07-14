@@ -41,8 +41,8 @@ params <- tribble(
 #===============================================================================
 
 # Temperature first
-start_date <- ymd("2020-01-01")
-end_date <- ymd("2023-12-31")
+start_date <- ymd("1961-01-01")
+end_date <- ymd("1990-12-31")
 
 # Loop for each row in params
 climate_normals_temperature <- params %>%
@@ -112,6 +112,18 @@ monthly_normales_temperature_df <- map_dfr(climate_normals_temperature$output, "
   ) %>% 
   dplyr::select(-id, -min, -max, -mean, -sd) %>% 
   arrange(month, x, y, statistic)
+
+normales_temperature_df <- map_dfr(climate_normals_temperature$output, "period", .id = "id") %>%
+  left_join(params2, by = "id") %>% 
+  as.tibble() %>% 
+  mutate(
+    min_period = min,
+    max_period = max,
+    mean_period = mean,
+    sd_period = sd
+  ) %>% 
+  dplyr::select(-id, -min, -max, -mean, -sd) %>% 
+  arrange(x, y, statistic)
 
 #===============================================================================
 # 2) Combine all ncdf files in a dataframe to get all daily observations 
