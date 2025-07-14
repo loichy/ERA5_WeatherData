@@ -35,17 +35,45 @@ source(here(dir$script, "00_Functions.R"))
 
 # 2. Get your API keys: https://cds.climate.copernicus.eu/how-to-api
 
-# 3. Download weather data of interest
+key_loic <- "97b8d178-a8e9-4fa1-ac36-3fae90a074e1"  
+# Key Inès: 73737aee-7063-4fb9-9548-2a983ffdbfbe
+# Key Loic: 97b8d178-a8e9-4fa1-ac36-3fae90a074e1
 
-download_era5_ecmwfr(
-  variable = "2m_temperature",
-  start_date = "2023-01-01",
-  end_date = "2023-02-28",
-  statistic = "daily_mean",
-  key = "73737aee-7063-4fb9-9548-2a983ffdbfbe",
-  output_dir = dir$source
+#===============================================================================
+# 2) Download weather data ------
+#===============================================================================
+
+# Define combinations of variables and statistics
+params <- tribble(
+  ~variable,        ~statistic,
+  "2m_temperature", "daily_mean",
+  # "2m_temperature", "daily_minimum",
+  # "2m_temperature", "daily_maximum",
+  # "total_precipitation", "daily_sum"
 )
 
+# Define other shared parameters
+start_date <- "2020-01-01"
+end_date <- "2020-01-31"
+output_dir <- dir$source
+
+
+# Run download function for each combination
+params |>
+  purrr::pwalk(~ download_era5_ecmwfr(
+    variable = ..1,
+    statistic = ..2,
+    start_date = start_date,
+    end_date = end_date,
+    output_dir = output_dir,
+    key = key_loic
+  ))
+
+#===============================================================================
+# 3) Download Land-Sea Mask ------
+#===============================================================================
+
+# Go to Climate Data Store (CDS) to download the Land-Sea Mask manually (not working with ecmwfr package)
 
 
 
