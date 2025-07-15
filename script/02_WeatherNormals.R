@@ -41,13 +41,14 @@ params <- tribble(
 #===============================================================================
 
 # Temperature first
-start_date <- ymd("1961-01-01")
-end_date <- ymd("1990-12-31")
+start_date <- ymd("1981-01-01")
+end_date <- ymd("2010-12-31")
 
 # Loop for each row in params
 climate_normals_temperature <- params %>%
   filter(
-    variable == "2m_temperature"
+    variable == "2m_temperature",
+    statistic == "daily_mean"
   ) %>% 
   mutate(
     output = map2(variable, statistic, ~{
@@ -82,7 +83,8 @@ all_rolling <- map_dfr(climate_normals_temperature$output, "rolling", .id = "id"
 # First: add id to params too
 params2 <- params %>%
   filter(
-    variable == "2m_temperature"
+    variable == "2m_temperature",
+    statistic == "daily_mean"
   ) %>% 
   mutate(id = as.character(row_number()))
 
@@ -98,12 +100,12 @@ rolling_temperature_percentiles_df <- all_rolling %>%
     },
     .cols = matches("^[0-9]+%$")
   ) %>% 
-  select(-id) %>% 
+  dplyr::select(-id) %>% 
   arrange(day, month, x, y, statistic)
 
 monthly_normales_temperature_df <- map_dfr(climate_normals_temperature$output, "monthly", .id = "id") %>%
   left_join(params2, by = "id") %>% 
-  as.tibble() %>% 
+  as_tibble() %>% 
   mutate(
     min_monthly = min,
     max_monthly = max,
@@ -113,14 +115,26 @@ monthly_normales_temperature_df <- map_dfr(climate_normals_temperature$output, "
   dplyr::select(-id, -min, -max, -mean, -sd) %>% 
   arrange(month, x, y, statistic)
 
-normales_temperature_df <- map_dfr(climate_normals_temperature$output, "period", .id = "id") %>%
+quarterly_normales_temperature_df <- map_dfr(climate_normals_temperature$output, "quarterly", .id = "id") %>%
   left_join(params2, by = "id") %>% 
-  as.tibble() %>% 
+  as_tibble() %>% 
   mutate(
-    min_period = min,
-    max_period = max,
-    mean_period = mean,
-    sd_period = sd
+    min_quarterly = min,
+    max_quarterly = max,
+    mean_quarterly = mean,
+    sd_quarterly = sd
+  ) %>% 
+  dplyr::select(-id, -min, -max, -mean, -sd) %>% 
+  arrange(quarter, x, y, statistic)
+
+historical_normales_temperature_df <- map_dfr(climate_normals_temperature$output, "historical", .id = "id") %>%
+  left_join(params2, by = "id") %>% 
+  as_tibble() %>% 
+  mutate(
+    min_historical = min,
+    max_historical = max,
+    mean_historical = mean,
+    sd_historical = sd
   ) %>% 
   dplyr::select(-id, -min, -max, -mean, -sd) %>% 
   arrange(x, y, statistic)
@@ -131,8 +145,8 @@ normales_temperature_df <- map_dfr(climate_normals_temperature$output, "period",
 #===============================================================================
 
 # Precipitations second
-start_date <- ymd("2020-01-01")
-end_date <- ymd("2023-12-31")
+start_date <- ymd("1981-01-01")
+end_date <- ymd("2010-12-31")
 
 # Loop for each row in params
 climate_normals_temperature <- params %>%
@@ -169,9 +183,17 @@ climate_normals_temperature <- params %>%
 
 saveRDS(
   rolling_temperature_percentiles_df,
-  file = here(dir$prepared, "climate_normals_temperature_percentiles.rds")
+  file = here(dir$prepared, "climate_normales_temperature_percentiles.rds")
 )
 saveRDS(
   monthly_normales_temperature_df,
   file = here(dir$prepared, "monthly_normales_temperature.rds")
+)
+saveRDS(
+  quarterly_normales_temperature_df,
+  file = here(dir$prepared, "quarterly_normales_temperature.rds")
+)
+saveRDS(
+  historical_normales_temperature_df,
+  file = here(dir$prepared, "historical_normales_temperature.rds")
 )
