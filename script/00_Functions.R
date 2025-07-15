@@ -133,7 +133,7 @@ process_era5_files <- function(source_dir,
                                end_date) {
   # source_dir <- dir$source
   # variable <- "2m_temperature"
-  # statistic <- "daily_min"
+  # statistic <- "daily_mean"
   # start_date <- ymd("2020-01-01") # Reference period for weather normals
   # end_date <- ymd("2020-12-31")
   
@@ -232,6 +232,7 @@ compute_temperature_normals_dt <- function(df, value_col, rolling_window = 7, pe
   
   df[, `:=`(
     year = year(date),
+    quarter = quarter(date),
     month = month(date),
     day = day(date),
     doy = yday(date)
@@ -264,7 +265,7 @@ compute_temperature_normals_dt <- function(df, value_col, rolling_window = 7, pe
     by = .(x, y, target_month, target_day)
   ]
   
-  # Monthly stats — also data.table
+  # Monthly stats
   monthly <- df[
     ,
     .(
@@ -276,9 +277,35 @@ compute_temperature_normals_dt <- function(df, value_col, rolling_window = 7, pe
     by = .(x, y, month)
   ]
   
+  # Quarterly stats
+  quarterly <- df[
+    ,
+    .(
+      min = min(get(value_col), na.rm = TRUE),
+      max = max(get(value_col), na.rm = TRUE),
+      mean = mean(get(value_col), na.rm = TRUE),
+      sd = sd(get(value_col), na.rm = TRUE)
+    ),
+    by = .(x, y, quarter)
+  ]
+  
+  # Historical stats
+  historical <- df[
+    ,
+    .(
+      min = min(get(value_col), na.rm = TRUE),
+      max = max(get(value_col), na.rm = TRUE),
+      mean = mean(get(value_col), na.rm = TRUE),
+      sd = sd(get(value_col), na.rm = TRUE)
+    ),
+    by = .(x, y)
+  ]
+  
   list(
+    rolling = rolling,
     monthly = monthly,
-    rolling = rolling
+    quarterly = quarterly,
+    historical = historical
   )
 }
 
@@ -339,7 +366,20 @@ compute_precipitation_normals_dt <- function(df, value_col, rolling_window = 7, 
     by = .(x, y, month)
   ]
   
-  period <- df[
+  # Quarterly stats
+  quarterly <- df[
+    ,
+    .(
+      min = min(get(value_col), na.rm = TRUE),
+      max = max(get(value_col), na.rm = TRUE),
+      mean = mean(get(value_col), na.rm = TRUE),
+      sd = sd(get(value_col), na.rm = TRUE)
+    ),
+    by = .(x, y, quarter)
+  ]
+  
+  # Historical stats
+  historical <- df[
     ,
     .(
       min = min(get(value_col), na.rm = TRUE),
@@ -351,9 +391,10 @@ compute_precipitation_normals_dt <- function(df, value_col, rolling_window = 7, 
   ]
   
   list(
-    period = period
+    rolling = rolling,
     monthly = monthly,
-    rolling = rolling
+    quarterly = quarterly,
+    historical = historical
   )
 }
 
