@@ -20,6 +20,8 @@ dir$source <- here(dir$data, "source") # Folder for original data files
 dir$prepared <- here(dir$data, "prepared") # Folder for prepared/created data files
 dir$script <- here(dir$root, "script") # Folder for code analyses
 dir$output <- here(dir$root, "output") # Folder for created figures
+dir$sf <- here(dir$data, "shapefiles")
+dir$final <- here(dir$data, "final")
 
 # Create non existing directories
 lapply(dir, function(i) dir.create(i, recursive = T, showWarnings = F))
@@ -28,33 +30,16 @@ lapply(dir, function(i) dir.create(i, recursive = T, showWarnings = F))
 source(here(dir$script, "00_Functions.R"))
 
 #===============================================================================
-# 1)  Aggregate using commune shapefile ------
+# 1)  Aggregate at the commune level ------
 #===============================================================================
 
-# Function for spatial aggregation
-spatial_agg_era5(source_dir = dir$prepared)
-
-# Function for correcting WSD and CSD columns to integer values after interpolation
-correct_interpol <- function(source_dir) {
-  files <- list.files(source_dir, full.names = TRUE, pattern = "\\.rds$")
-  files <- files[basename(files) != "normals.rds"]
-  
-  for (file in files) {
-    final_centroid_interp <- readRDS(file)
-    cols_to_round <- c("warm_spell", "warm_spell_index", "cold_spell", "cold_spell_index")
-    
-    final_centroid_interp[cols_to_round] <- lapply(final_centroid_interp[cols_to_round], function(col) {
-      if (is.numeric(col)) {
-        return(round(col))
-      } else {
-        return(col)
-      }
-    })
-    saveRDS(final_centroid_interp, file) 
-  }
-}
-
-correct_interpol(source_dir = dir$prepared)
-
+# Function for spatial aggregation from "00_Functions.R"
+spatial_agg_era5(
+  source_dir = dir$prepared,
+  start_year = "2006",
+  end_year = "2020",
+  start_reference_year = "1971",
+  end_reference_year = "2000"
+                 )
 
 

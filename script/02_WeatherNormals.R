@@ -41,8 +41,8 @@ params <- tribble(
 #===============================================================================
 
 # Temperature first
-start_date <- ymd("1981-01-01")
-end_date <- ymd("2010-12-31")
+start_date <- ymd("1971-01-01")
+end_date <- ymd("2000-12-31")
 
 # Loop for each row in params
 climate_normals_temperature <- params %>%
@@ -78,6 +78,7 @@ climate_normals_temperature <- params %>%
 # Combine results
 # combine all rolling tables, keeping .id = index
 all_rolling <- map_dfr(climate_normals_temperature$output, "rolling", .id = "id")
+all_normals <- map_dfr(climate_normals_temperature$output, "normals", .id = "id") 
 
 # join with params by id
 # First: add id to params too
@@ -88,7 +89,13 @@ params2 <- params %>%
   ) %>% 
   mutate(id = as.character(row_number()))
 
-# Now left join!
+# Now left join:
+normales_temperature_df <- all_normals %>% 
+  left_join(params2, by = "id") %>% 
+  dplyr::select(-id) %>% 
+  arrange(freq, quarter, month, x, y) %>% 
+  mutate(reference_period = paste(year(start_date), year(end_date), sep = "_"))
+
 rolling_temperature_percentiles_df <- all_rolling %>%
   left_join(params2, by = "id") %>% 
   rename(month = target_month,
@@ -101,43 +108,24 @@ rolling_temperature_percentiles_df <- all_rolling %>%
     .cols = matches("^[0-9]+%$")
   ) %>% 
   dplyr::select(-id) %>% 
-  arrange(day, month, x, y, statistic)
+  arrange(day, month, x, y, statistic) %>% 
+  mutate(reference_period = paste(year(start_date), year(end_date), sep = "_"))
 
-monthly_normales_temperature_df <- map_dfr(climate_normals_temperature$output, "monthly", .id = "id") %>%
-  left_join(params2, by = "id") %>% 
-  as_tibble() %>% 
-  mutate(
-    min_monthly = min,
-    max_monthly = max,
-    mean_monthly = mean,
-    sd_monthly = sd
-  ) %>% 
-  dplyr::select(-id, -min, -max, -mean, -sd) %>% 
-  arrange(month, x, y, statistic)
+# check_temp <- nomales_temperature_df %>%
+#   filter(freq == "historical") %>% 
+#   mutate(
+#    hot_days = days_bin_24_27 + days_bin_27_30 + days_bin_greater_30 
+#   )
+#  
+# ggplot(data = check_temp, aes(x=x, y=y, color = hot_days, fill = hot_days))+
+#   geom_tile() +
+#   scale_fill_viridis_c() +
+#   scale_color_viridis_c() +
+#   theme_bw() +
+#   labs(x = "Longitude",
+#        y = "Latitude") +
+#   theme(legend.position = "bottom")
 
-quarterly_normales_temperature_df <- map_dfr(climate_normals_temperature$output, "quarterly", .id = "id") %>%
-  left_join(params2, by = "id") %>% 
-  as_tibble() %>% 
-  mutate(
-    min_quarterly = min,
-    max_quarterly = max,
-    mean_quarterly = mean,
-    sd_quarterly = sd
-  ) %>% 
-  dplyr::select(-id, -min, -max, -mean, -sd) %>% 
-  arrange(quarter, x, y, statistic)
-
-historical_normales_temperature_df <- map_dfr(climate_normals_temperature$output, "historical", .id = "id") %>%
-  left_join(params2, by = "id") %>% 
-  as_tibble() %>% 
-  mutate(
-    min_historical = min,
-    max_historical = max,
-    mean_historical = mean,
-    sd_historical = sd
-  ) %>% 
-  dplyr::select(-id, -min, -max, -mean, -sd) %>% 
-  arrange(x, y, statistic)
 
 #===============================================================================
 # 2) Combine all ncdf files in a dataframe to get all daily observations 
@@ -145,11 +133,11 @@ historical_normales_temperature_df <- map_dfr(climate_normals_temperature$output
 #===============================================================================
 
 # Precipitations second
-start_date <- ymd("1981-01-01")
-end_date <- ymd("2010-12-31")
+start_date <- ymd("1971-01-01")
+end_date <- ymd("2000-12-31")
 
 # Loop for each row in params
-climate_normals_temperature <- params %>%
+climate_normals_precipitation <- params %>%
   filter(
     variable == "total_precipitation"
   ) %>% 
@@ -165,17 +153,32 @@ climate_normals_temperature <- params %>%
         end_date = end_date
       ) %>%
         do.call(rbind, .) %>%
-        mutate(variable = .x, statistic = .y)
-      
+        mutate(variable = .x, 
+               statistic = .y)
+
       # 2) Compute normals using function in script 00_Functions.R
-      compute_precipitations_normals_dt(
+      compute_precipitation_normals_dt(
         df = df_weather,
-        value_col = paste(.x, .y, sep = "_"),
-        rolling_window = 7,
-        percentiles = c(0.01, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99)
+        value_col = paste(.x, .y, sep = "_")
       )
     })
   )
+
+
+normales_precipitation_df <- map_dfr(climate_normals_precipitation$output, "result", .id = "id") %>% 
+  mutate(reference_period = paste(year(start_date), year(end_date), sep = "_"))
+
+# check_prec <- normales_precipitation_df %>% 
+#   filter(freq == "yearly") 
+# 
+# ggplot(data = check_prec, aes(x=x, y=y, color = avg_wet_days, fill = avg_wet_days))+
+#   geom_tile() +
+#   scale_fill_viridis_c() +
+#   scale_color_viridis_c() +
+#   theme_bw() +
+#   labs(x = "Longitude",
+#        y = "Latitude") +
+#   theme(legend.position = "bottom")
 
 #===============================================================================
 # 3) Save historical weather ------
@@ -183,17 +186,38 @@ climate_normals_temperature <- params %>%
 
 saveRDS(
   rolling_temperature_percentiles_df,
-  file = here(dir$prepared, "climate_normales_temperature_percentiles.rds")
+  file = here(
+    dir$prepared, 
+    paste("climate_normales_temperature_percentiles_", 
+          year(start_date),
+          "_",
+          year(end_date),
+          ".rds", sep = ""
+          )
+  )
 )
 saveRDS(
-  monthly_normales_temperature_df,
-  file = here(dir$prepared, "monthly_normales_temperature.rds")
+  normales_temperature_df,
+  file = here(
+    dir$prepared, 
+    paste("climate_normales_temperature_",
+          year(start_date),
+          "_",
+          year(end_date),
+          ".rds", sep = ""
+          )
+    )
 )
 saveRDS(
-  quarterly_normales_temperature_df,
-  file = here(dir$prepared, "quarterly_normales_temperature.rds")
+  normales_precipitation_df,
+  file = here(
+    dir$prepared, 
+    paste("climate_normales_precipitation_",
+          year(start_date),
+          "_",
+          year(end_date),
+          ".rds", sep = ""
+          )
+    )
 )
-saveRDS(
-  historical_normales_temperature_df,
-  file = here(dir$prepared, "historical_normales_temperature.rds")
-)
+

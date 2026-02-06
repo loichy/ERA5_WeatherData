@@ -35,9 +35,10 @@ source(here(dir$script, "00_Functions.R"))
 
 # 2. Get your API keys: https://cds.climate.copernicus.eu/how-to-api
 
-key_loic <- "97b8d178-a8e9-4fa1-ac36-3fae90a074e1"  
+key_loic <- "bcf2827f-fb1f-4647-ac97-e52ba81be39c"  
+
 # Key Inès: 73737aee-7063-4fb9-9548-2a983ffdbfbe
-# Key Loic: 97b8d178-a8e9-4fa1-ac36-3fae90a074e1
+# Key Loic: bcf2827f-fb1f-4647-ac97-e52ba81be39c
 
 #===============================================================================
 # 2) Download weather data ------
@@ -53,13 +54,13 @@ params <- tribble(
 )
 
 # Define other shared parameters
-start_date <- "1960-01-01"
+start_date <- "2018-06-01"
 end_date <- "2019-12-31"
 output_dir <- dir$source
 
-
 # Run download function for each combination
 params |>
+  filter(variable == "total_precipitation") %>% 
   purrr::pwalk(~ download_era5_ecmwfr(
     variable = ..1,
     statistic = ..2,
