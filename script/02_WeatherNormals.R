@@ -9,8 +9,7 @@ gc()
 # Load package
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(ecmwfr, tidyverse, dplyr, purrr, terra, maps, here, ncdf4, raster, climate, devtools, lubridate,
-               sf, sp, rnaturalearth, rnaturalearthdata, Matrix, slider, data.table)
-
+               sf, sp, rnaturalearth, rnaturalearthdata, Matrix, slider, data.table)#test
 # List directories 
 dir <- list()
 dir$root <- here()
