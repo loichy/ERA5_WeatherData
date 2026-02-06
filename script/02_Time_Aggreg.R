@@ -3,6 +3,8 @@
 # into a data frame format to create time-aggregated indicators
 #===============================================================================
 ok
+ko
+
 # Clean memory 
 rm(list=ls())
 gc()
