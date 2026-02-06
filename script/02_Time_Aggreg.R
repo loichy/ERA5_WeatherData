@@ -2,7 +2,7 @@
 # Description: Delimit the raster borders to France and transform all files 
 # into a data frame format to create time-aggregated indicators
 #===============================================================================
-
+ok
 # Clean memory 
 rm(list=ls())
 gc()
