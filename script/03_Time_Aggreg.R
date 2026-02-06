@@ -6,8 +6,6 @@
 # Note that climat normals files for that periods must have been previously generated using script "02_WeatherNormals.R"
 # (ii) Then, all steps of the script can be executed, and data will be saved in dir$prepared
 #===============================================================================
-ok
-ko
 
 # Clean memory 
 rm(list=ls())
