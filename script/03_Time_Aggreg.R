@@ -46,7 +46,7 @@ params <- tribble( # Comment to remove statistics you don't want
 )
 
 # Period of analysis
-start_date <- ymd("2006-01-01")
+start_date <- ymd("2015-01-01")
 end_date <- ymd("2023-12-31")
 
 # Reference period:
@@ -63,7 +63,7 @@ end_date_normals <- "2000"
 
 # Loop for each row in params
 weather_list <- params %>%
-  filter(variable %in% c("total_precipitation")) %>% 
+  filter(variable %in% c("2m_temperature")) %>% 
   mutate(
     output = map2(variable, statistic, ~{
       
@@ -81,7 +81,7 @@ weather_list <- params %>%
     })
   )
 
-
+# Changer les dates de début et de fin pour aller plus vite: 3 ou 4 ans
 temperature_df <- weather_list %>% 
   filter(variable == "2m_temperature") %>% 
   dplyr::select(output) %>%
@@ -94,6 +94,8 @@ temperature_df <- weather_list %>%
     doy = yday(date),
     temp_C = `2m_temperature_daily_mean` - 273.15
   )
+
+saveRDS(temperature_df, file = here(dir$prepared,"temperature_test.rds"))
 
 precipitation_df <- weather_list %>% 
   filter(variable == "total_precipitation") %>% 
@@ -145,7 +147,7 @@ df <- temperature_df
 # Transform in data table
 df <-  setDT(df)
 
-# Monthly stats
+# Monthly stats (avec data.table)
 monthly <- df[
   ,
   .(
