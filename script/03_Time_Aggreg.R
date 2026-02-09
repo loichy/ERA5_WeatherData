@@ -81,7 +81,6 @@ weather_list <- params %>%
     })
   )
 
-# Changer les dates de début et de fin pour aller plus vite: 3 ou 4 ans
 temperature_df <- weather_list %>% 
   filter(variable == "2m_temperature") %>% 
   dplyr::select(output) %>%
@@ -94,8 +93,6 @@ temperature_df <- weather_list %>%
     doy = yday(date),
     temp_C = `2m_temperature_daily_mean` - 273.15
   )
-
-saveRDS(temperature_df, file = here(dir$prepared,"temperature_test.rds"))
 
 precipitation_df <- weather_list %>% 
   filter(variable == "total_precipitation") %>% 
@@ -161,7 +158,7 @@ monthly <- df[
   by = .(x, y, year, month)
 ][, freq := "monthly"]
 
-# Monthly stats
+# Quartely stats
 quarterly <- df[
   ,
   .(
