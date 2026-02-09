@@ -28,7 +28,23 @@ lapply(dir, function(i) dir.create(i, recursive = T, showWarnings = F))
 source(here(dir$script, "00_Functions.R"))
 
 #==========================================================
-# We use the data.frame we saved in script 03_Time_Aggreg.R
+# We use the dataframe we saved in script 03_Time_Aggreg.R
 #==========================================================
 
 df <- readRDS("data/prepared/weather_temperature_2015_2023_reference_1971_2000.rds")
+
+
+# Let's see how temperatures evolve in Mendive (Basque Country) 
+# Mendive : x = -1 & y = 43
+
+mendive_temp <- df %>%
+  filter(x == -1, y == 43,
+         freq == "quarterly") %>%
+  group_by(year, quarter)
+
+ggplot(mendive_temp, aes(x = year, y = mean, color = as.character(quarter))) +
+  geom_point() + geom_line() + theme_minimal() +
+  labs(x = "Year",
+       y = "Mean temperature", 
+       title = "Evolution of the mean temperature in Mendive by quarter",
+       color = "Quarter")
