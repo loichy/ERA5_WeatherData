@@ -110,6 +110,7 @@ rolling_temperature_percentiles_df <- all_rolling %>%
   arrange(day, month, x, y, statistic) %>% 
   mutate(reference_period = paste(year(start_date), year(end_date), sep = "_"))
 
+
 # check_temp <- nomales_temperature_df %>%
 #   filter(freq == "historical") %>% 
 #   mutate(
