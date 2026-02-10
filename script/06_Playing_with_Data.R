@@ -1,5 +1,5 @@
 #======================================================================================
-# Using scripts from 03_Time_Aggreg.R to play with the temperature data, make maps, ...
+# Using script from 03_Time_Aggreg.R to play with the temperature data, make maps, ...
 #======================================================================================
 
 # Clean memory 
