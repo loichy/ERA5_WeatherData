@@ -32,6 +32,7 @@ source(here(dir$script, "00_Functions.R"))
 #==========================================================
 
 df <- readRDS("data/prepared/weather_temperature_2015_2023_reference_1971_2000.rds")
+normales_temperature_df <- readRDS("data/prepared/climate_normales_temperature_1971_2000.rds")
 
 
 # Let's see how temperatures evolve in Mendive (Basque Country) 
@@ -39,12 +40,122 @@ df <- readRDS("data/prepared/weather_temperature_2015_2023_reference_1971_2000.r
 
 mendive_temp <- df %>%
   filter(x == -1, y == 43,
-         freq == "quarterly") %>%
-  group_by(year, quarter)
+         freq == "quarterly", 
+         ! is.na(quarter)) %>%
+  select(year, min, max, mean, reference_mean, reference_max, reference_min, quarter)
 
-ggplot(mendive_temp, aes(x = year, y = mean, color = as.character(quarter))) +
-  geom_point() + geom_line() + theme_minimal() +
-  labs(x = "Year",
-       y = "Mean temperature", 
-       title = "Evolution of the mean temperature in Mendive by quarter",
-       color = "Quarter")
+ggplot(mendive_temp, aes(x = year)) +
+  geom_line(aes(y = min, color = "Minimum")) + 
+  geom_line(aes(y = reference_min, color = "Minimum reference")) +
+  scale_color_manual(values = c("blue", "skyblue")) +
+  facet_wrap(~ quarter) +
+  theme_minimal() +
+  labs(title = "Evolution of minimal temperatures by quarter in Mendive",
+       x = "Year",
+       y = "Temperature in C°",
+       color = "Color")
+
+ggplot(mendive_temp, aes(x = year)) +
+  geom_line(aes(y = max, color = "Maximum")) +
+  geom_line(aes(y = reference_max, color = "Maximum reference")) +
+  scale_color_manual(values = c("darkorange1", "red2")) +
+  facet_wrap(~ quarter) +
+  theme_minimal() +
+  labs(title = "Evolution of maximal temperatures by quarter in Mendive",
+       x = "Year",
+       y = "Temperature in C°", 
+       color = "Color")
+
+ggplot(mendive_temp, aes(x = year)) +
+  geom_line(aes(y = mean, color = "Mean")) +
+  geom_line(aes(y = reference_mean, color = "Mean reference")) +
+  scale_color_manual(values = c("chartreuse", "forestgreen")) +
+  facet_wrap(~ quarter) +
+  theme_minimal() +
+  labs(title = "Evolution of mean temperatures by quarter in Mendive",
+       x = "Year",
+       y = "Temperature in C°",
+       color = "Color")
+
+# Let's see how the number of hot days has evolved from 2015 to 2023 for France
+
+select <- dplyr::select 
+
+
+ggplot(df %>% filter(year %in% c(2015, 2023)),
+  aes(x = x, y = y, color = hot_days, fill = hot_days)) +
+  geom_tile() + 
+  scale_fill_viridis_c(option = "turbo") +
+  scale_color_viridis_c(option = "turbo") +
+  facet_wrap(~ year) +  
+  theme_void() +
+  labs(title = "Comparison of Hot Days",
+    subtitle = "Years: 2015 vs 2023",
+    fill = "Hot days",
+    color = "Hot days")
+
+ggplot(df, aes(x = x, y = y, color = hot_days, fill = hot_days)) +
+  geom_tile() + 
+  facet_wrap(~ year) +
+  scale_fill_viridis_c(option = "turbo") +
+  scale_color_viridis_c(option = "turbo") +
+  theme_void() +
+  labs(title = "Number of hot days by year",
+       fill = "Hot days",
+       color = "Hot days")
+
+# Which seasons are the most impacted?
+
+ggplot(df %>%
+         select(x, y, year, quarter, hot_days) %>%
+         filter(year == 2015, ! is.na(quarter)), 
+       aes(x = x, y = y, color = hot_days, fill = hot_days)) +
+  geom_tile() + 
+  facet_wrap( ~ quarter) + 
+  scale_fill_viridis_c(option = "turbo") +
+  scale_color_viridis_c(option = "turbo") +
+  theme_void() +
+  labs(title = "Number of hot days in 2015 by quarter",
+       fill = "Hot days",
+       color = "Hot days")
+
+ggplot(df %>%
+         select(x, y, year, quarter, hot_days) %>%
+         filter(year == 2023, ! is.na(quarter)), 
+       aes(x = x, y = y, color = hot_days, fill = hot_days)) +
+  geom_tile() + 
+  facet_wrap( ~ quarter) + 
+  scale_fill_viridis_c(option = "turbo") +
+  scale_color_viridis_c(option = "turbo") +
+  theme_void() +
+  labs(title = "Number of hot days in 2023 by quarter",
+       fill = "Hot days",
+       color = "Hot days")
+
+# Which months are the most impacted?
+
+ggplot(df %>%
+         select(x, y, year, month, hot_days) %>%
+         filter(year == 2015, ! is.na(month)), 
+       aes(x = x, y = y, color = hot_days, fill = hot_days)) +
+  geom_tile() + 
+  facet_wrap( ~ month) + 
+  scale_fill_viridis_c(option = "turbo") +
+  scale_color_viridis_c(option = "turbo") +
+  theme_void() +
+  labs(title = "Number of hot days in 2015 by month",
+       fill = "Hot days",
+       color = "Hot days")
+
+ggplot(df %>%
+         select(x, y, year, month, hot_days) %>%
+         filter(year == 2023, ! is.na(month)), 
+       aes(x = x, y = y, color = hot_days, fill = hot_days)) +
+  geom_tile() + 
+  facet_wrap( ~ month) + 
+  scale_fill_viridis_c(option = "turbo") +
+  scale_color_viridis_c(option = "turbo") +
+  theme_void() +
+  labs(title = "Number of hot days in 2023 by month",
+       fill = "Hot days",
+       color = "Hot days")
