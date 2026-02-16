@@ -35,6 +35,9 @@ df <- readRDS("data/prepared/weather_temperature_2015_2023_reference_1971_2000.r
 normales_temperature_df <- readRDS("data/prepared/climate_normales_temperature_1971_2000.rds")
 
 
+select <- dplyr::select 
+
+
 # Let's see how temperatures evolve in Mendive (Basque Country) 
 # Mendive : x = -1 & y = 43
 
@@ -78,8 +81,6 @@ ggplot(mendive_temp, aes(x = year)) +
        color = "Color")
 
 # Let's see how the number of hot days has evolved from 2015 to 2023 for France
-
-select <- dplyr::select 
 
 
 ggplot(df %>% filter(year %in% c(2015, 2023)),

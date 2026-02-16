@@ -39,9 +39,9 @@ params <- tribble(
 # in a single object and then compute historical weather for temperature ------
 #===============================================================================
 
-# Temperature first
+# Temperature first 
 start_date <- ymd("1971-01-01")
-end_date <- ymd("2000-12-31")
+end_date <- ymd("2000-12-31") 
 
 # Loop for each row in params
 climate_normals_temperature <- params %>%
@@ -72,7 +72,6 @@ climate_normals_temperature <- params %>%
       )
     })
   )
-
 
 # Combine results
 # combine all rolling tables, keeping .id = index
