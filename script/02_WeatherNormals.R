@@ -73,6 +73,7 @@ climate_normals_temperature <- params %>%
     })
   )
 
+
 # Combine results
 # combine all rolling tables, keeping .id = index
 all_rolling <- map_dfr(climate_normals_temperature$output, "rolling", .id = "id")

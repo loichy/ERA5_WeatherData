@@ -33,7 +33,7 @@ source(here(dir$script, "00_Functions.R"))
 
 df <- readRDS("data/prepared/weather_temperature_2015_2023_reference_1971_2000.rds")
 normales_temperature_df <- readRDS("data/prepared/climate_normales_temperature_1971_2000.rds")
-
+daily_temp_df <- readRDS("data/prepared/daily_temperature_2015_2023_reference_1971_2000.rds")
 
 select <- dplyr::select 
 
@@ -160,3 +160,24 @@ ggplot(df %>%
   labs(title = "Number of hot days in 2023 by month",
        fill = "Hot days",
        color = "Hot days")
+
+
+# ==============================================
+# Let's create a few more indices (ETCCDI)
+# ==============================================
+
+# 1- We compute GSL : the growing season length (n°5)
+
+GSL_daily <- daily_temp_df %>%
+  filter(x == 1.75, y == 51) %>%
+  select(year, month, day, temp_C) 
+
+
+# Il existe aussi un package : ClimInd et une fonction gsl 
+# pour faire ça mais j'arrive pas encore à le faire marcher
+
+GSL_daily_noleap <- GSL_daily %>%
+  filter(!(month == 2 & day == 29))
+
+
+as.Date("09/28/2008", format = "%m / %d / %Y")

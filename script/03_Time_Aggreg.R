@@ -433,3 +433,21 @@ saveRDS(precipitation_df,
                 sep="")
         )
 )
+
+# Ajouté pour avoir les données journalières sur les températures :
+
+saveRDS(df, 
+        file = here(
+          dir$prepared, 
+          paste("daily_temperature_",
+                year(start_date),
+                "_",
+                year(end_date),
+                "_reference_",
+                start_date_normals,
+                "_",
+                end_date_normals,
+                ".rds",
+                sep="")
+        )
+)
