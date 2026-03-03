@@ -80,8 +80,8 @@ ggplot(mendive_temp, aes(x = year)) +
        y = "Temperature in C°",
        color = "Color")
 
-# Let's see how the number of hot days has evolved from 2015 to 2023 for France
 
+# Let's see how the number of hot days has evolved from 2015 to 2023 for France
 
 ggplot(df %>% filter(year %in% c(2015, 2023)),
   aes(x = x, y = y, color = hot_days, fill = hot_days)) +
@@ -168,11 +168,8 @@ ggplot(df %>%
 
 # 1- We compute GSL : the growing season length (n°5)
 
-GSL_daily <- daily_temp_df %>%
-  filter(x == 6.75, y == 45.25)
 
-
-calc_gsl_fast <- function(temp, doy) {
+calc_gsl <- function(temp, doy) {
   # Let's make sure the data is in the right order
   # (Even though is shoud already be thanks to the doy)
   ord <- order(doy)
@@ -219,15 +216,15 @@ calc_gsl_fast <- function(temp, doy) {
 # GSL by location and year
 gsl_results <- daily_temp_df %>%
   group_by(x, y, year) %>%
-  summarize(gsl_days = calc_gsl_fast(temp_C, doy), .groups = "drop")
+  summarize(gsl_days = calc_gsl(temp_C, doy), .groups = "drop")
 
 
 # Il existe aussi un package : ClimInd et une fonction gsl 
 # pour faire ça mais j'arrive pas encore à le faire marcher
 # library(ClimInd)
 
-# Time to visualize the results !
 
+# Time to visualize the results !
 
 ggplot(gsl_results %>% filter(year %in% c(2015, 2023)),
        aes(x = x, y = y, color = gsl_days, fill = gsl_days)) +
@@ -240,6 +237,7 @@ ggplot(gsl_results %>% filter(year %in% c(2015, 2023)),
        subtitle = "Years: 2015 vs 2023",
        fill = "Growing season days",
        color = "Growing season days")
+
 
 gsl_diff <- gsl_results %>% # To compute the difference between 2023/2015
   filter(year %in% c(2015, 2023)) %>%
@@ -255,9 +253,138 @@ ggplot(gsl_diff,
   scale_color_viridis_c(option = "turbo") +
   theme_void() +
   labs(title = "Evolution of Growing season length",
-       subtitle = "Years: 2015 to 2023",
+       subtitle = "Years: 2015 vs 2023",
        fill = "Growing season difference",
        color = "Growing season difference")
 
-summary(gsl_diff$dif) # Le représenter dans un joli tableau
+summary(gsl_diff$dif) 
+summary(gsl_results$gsl_days)
 
+# 2- We compute TG90p : the number of warm days 
+# It's the number of days where daily mean > 90th percentile
+# It was already done in the original data frame with "hot_days"
+
+ggplot(df %>% filter(freq == "yearly"),
+       aes(x = x, y = y, color = hot_days, fill = hot_days)) +
+  geom_tile() + 
+  scale_fill_viridis_c(option = "turbo", begin = 0.25) +
+  scale_color_viridis_c(option = "turbo", begin = 0.25) +
+  facet_wrap(~ year) +
+  theme_void() +
+  labs(title = "Evolution of Hot Days",
+       subtitle = "From 2015 to 2023",
+       fill = "Number of hot days",
+       color = "Number of hot days")
+
+# Also interesting to see if some seasons are particularly affected
+
+ggplot(df %>% filter(freq == "quarterly",
+                     year %in% c(2015, 2023)),
+       aes(x = x, y = y, color = hot_days, fill = hot_days)) +
+  geom_tile() + 
+  scale_fill_viridis_c(option = "turbo", begin = 0.15) +
+  scale_color_viridis_c(option = "turbo", begin = 0.15) +
+  facet_wrap(quarter ~ year) +
+  theme_void() +
+  labs(title = "Evolution of Hot Days",
+       subtitle = "Years 2015 vs 2023 by quarter",
+       fill = "Number of hot days",
+       color = "Number of hot days")
+
+
+# What if we used the 95th percentile? And 99th? (only by year)
+
+hot_days_year_95 <- daily_temp_df %>%
+  group_by(x, y, year) %>%
+  mutate(hot_days = sum(temp_C > p0.95, na.rm=T)) %>%
+  ungroup() %>%
+  select(x, y, year, hot_days) %>%
+  unique()
+
+ggplot(hot_days_year_95,
+    aes(x = x, y = y, color = hot_days, fill = hot_days)) +
+  geom_tile() + 
+  scale_fill_viridis_c(option = "turbo", begin = 0.25) +
+  scale_color_viridis_c(option = "turbo", begin = 0.25) +
+  facet_wrap(~ year) +
+  theme_void() +
+  labs(title = "Evolution of Hot Days (95th percentile)",
+       subtitle = "From 2015 to 2023",
+       fill = "Number of hot days",
+       color = "Number of hot days")
+
+hot_days_year_99 <- daily_temp_df %>%
+  group_by(x, y, year) %>%
+  mutate(hot_days = sum(temp_C > p0.99, na.rm=T)) %>%
+  ungroup() %>%
+  select(x, y, year, hot_days) %>%
+  unique()
+
+ggplot(hot_days_year_99,
+    aes(x = x, y = y, color = hot_days, fill = hot_days)) +
+  geom_tile() + 
+  scale_fill_viridis_c(option = "turbo", begin = 0.35) +
+  scale_color_viridis_c(option = "turbo", begin = 0.35) +
+  facet_wrap(~ year) +
+  theme_void() +
+  labs(title = "Evolution of Hot Days (99th percentile)",
+       subtitle = "From 2015 to 2023",
+       fill = "Number of hot days",
+       color = "Number of hot days")
+
+
+# 3- We compute TG10p : the number of cold days 
+# It's the number of days where daily mean < 10th percentile
+# It was already done in the original data frame with "cold_days"
+
+ggplot(df %>% filter(freq == "yearly"),
+       aes(x = x, y = y, color = cold_days, fill = cold_days)) +
+  geom_tile() + 
+  scale_fill_viridis_c(option = "turbo", end = 0.5, direction = -1) +
+  scale_color_viridis_c(option = "turbo", end = 0.5, direction = -1) +
+  facet_wrap(~ year) +
+  theme_void() +
+  labs(title = "Evolution of Cold Days",
+       subtitle = "From 2015 to 2023",
+       fill = "Number of cold days",
+       color = "Number of cold days")
+
+# What if we used the 5th percentile? And 1st? (only by year)
+
+cold_days_year_95 <- daily_temp_df %>%
+  group_by(x, y, year) %>%
+  mutate(cold_days = sum(temp_C < p0.05, na.rm=T)) %>%
+  ungroup() %>%
+  select(x, y, year, cold_days) %>%
+  unique()
+
+ggplot(cold_days_year_95,
+       aes(x = x, y = y, color = cold_days, fill = cold_days)) +
+  geom_tile() + 
+  scale_fill_viridis_c(option = "turbo", end = 0.35, direction = -1) +
+  scale_color_viridis_c(option = "turbo", end = 0.35, direction = -1) +
+  facet_wrap(~ year) +
+  theme_void() +
+  labs(title = "Evolution of Cold Days (5th percentile)",
+       subtitle = "From 2015 to 2023",
+       fill = "Number of cold days",
+       color = "Number of cold days")
+
+cold_days_year_99 <- daily_temp_df %>%
+  group_by(x, y, year) %>%
+  mutate(cold_days = sum(temp_C < p0.01, na.rm=T)) %>%
+  ungroup() %>%
+  select(x, y, year, cold_days) %>%
+  unique()
+
+ggplot(cold_days_year_99,
+       aes(x = x, y = y, color = cold_days, fill = cold_days)) +
+  geom_tile() + 
+  scale_fill_viridis_c(option = "turbo", end = 0.25, direction = -1) +
+  scale_color_viridis_c(option = "turbo", end = 0.25, direction = -1) +
+  facet_wrap(~ year) +
+  theme_void() +
+  labs(title = "Evolution of Cold Days (1st percentile)",
+       subtitle = "From 2015 to 2023",
+       fill = "Number of cold days",
+       color = "Number of cold days")
