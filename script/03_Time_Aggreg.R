@@ -46,8 +46,8 @@ params <- tribble( # Comment to remove statistics you don't want
 )
 
 # Period of analysis
-start_date <- ymd("2006-01-01")
-end_date <- ymd("2023-12-31")
+start_date <- ymd("2005-01-01")
+end_date <- ymd("2024-12-31")
 
 # Reference period:
 # Must be sure that there are data files for climate normales on this period
@@ -63,7 +63,7 @@ end_date_normals <- "2000"
 
 # Loop for each row in params
 weather_list <- params %>%
-  filter(variable %in% c("total_precipitation")) %>% 
+  # filter(variable %in% c("total_precipitation")) %>% 
   mutate(
     output = map2(variable, statistic, ~{
       
