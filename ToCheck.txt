@@ -1,0 +1,1 @@
+* Valeurs manquantes sur certaines années (Corse): vérifier téléchargement des données. Manque de spixels, et manque possiblement des jours pour certains pixels.
